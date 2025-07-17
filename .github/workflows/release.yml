@@ -43,18 +43,25 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🔍 获取项目信息
+      - name:  🔍 获取项目信息
         id: project
         run: |
+          # 如果是手动触发，使用输入的标签作为版本
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.tag }}"
+          else
+            version="${GITHUB_REF#refs/tags/}"
+          fi
+          
           echo "owner=${GITHUB_REPOSITORY_OWNER}" >> $GITHUB_OUTPUT
           echo "repo=${GITHUB_REPOSITORY#*/}" >> $GITHUB_OUTPUT
-          echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "version=${version}" >> $GITHUB_OUTPUT
           echo "full_sha=${GITHUB_SHA}" >> $GITHUB_OUTPUT
           echo "short_sha=${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
           echo "build_date=$(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_OUTPUT
           echo "build_timestamp=$(date +%s)" >> $GITHUB_OUTPUT
 
-      - name: 🐹 设置 Go 环境
+      - name:  🐹 设置 Go 环境
         uses: actions/setup-go@v5
         with:
           go-version: '1.20'
@@ -65,12 +72,12 @@ jobs:
           go mod download
           go mod verify
 
-      - name: 🗜️ 安装 UPX 压缩工具
+      - name: ️ 安装 UPX 压缩工具
         uses: crazy-max/ghaction-upx@v3
         with:
           install-only: true
 
-      - name: ℹ️ 显示构建环境信息
+      - name:  ℹ️ 显示构建环境信息
         run: |
           echo "Go 版本: $(go version)"
           echo "UPX 版本: $(upx --version)"
@@ -82,20 +89,26 @@ jobs:
           echo "- GITHUB_OWNER: $GITHUB_OWNER"
           echo "- GITHUB_REPO: $GITHUB_REPO"
           echo "- PROJECT_NAME: $PROJECT_NAME"
+          echo "触发方式: ${{ github.event_name }}"
+          echo "触发标签: ${{ inputs.tag }}"
 
-      - name: 📊 记录构建开始时间
+      - name:  📊 记录构建开始时间
         id: build_start
         run: |
           echo "start_time=$(date +%s)" >> $GITHUB_OUTPUT
           echo "start_readable=$(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_OUTPUT
 
-      - name: 🚀 构建和发布
+      - name:  构建和发布
         id: build_step
         uses: goreleaser/goreleaser-action@v5
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean -f .github/conf/.goreleaser.yml ${{ inputs.draft && '--draft' || '' }} ${{ inputs.prerelease && '--prerelease' || '' }}
+          args: |
+            release --clean -f .github/conf/.goreleaser.yml 
+            ${{ github.event_name == 'workflow_dispatch' && '--snapshot' || '' }}
+            ${{ inputs.draft && '--draft' || '' }} 
+            ${{ inputs.prerelease && '--prerelease' || '' }}
           workdir: .
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -125,7 +138,7 @@ jobs:
           retention-days: 30
         continue-on-error: true
 
-      - name: 📊 统计构建产物
+      - name:  📊 统计构建产物
         id: build_stats
         run: |
           if [ -d "dist" ]; then
@@ -165,7 +178,7 @@ jobs:
             release_status="![发布状态](https://img.shields.io/badge/发布-失败-red)"
           fi
           
-          echo "# 🎉 发布构建报告" >> $GITHUB_STEP_SUMMARY
+          echo "#  🎉 发布构建报告" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "$build_status $release_status" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -175,20 +188,21 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| 项目 | 值 |" >> $GITHUB_STEP_SUMMARY
           echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
-          echo "| 🏷️ **项目名称** | ${{ steps.project.outputs.repo }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 👤 **拥有者** | ${{ steps.project.outputs.owner }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🏷️ **版本** | \`${{ steps.project.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| 📝 **提交SHA** | \`${{ steps.project.outputs.short_sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "|  🏷️ **项目名称** | ${{ steps.project.outputs.repo }} |" >> $GITHUB_STEP_SUMMARY
+          echo "|  👤 **拥有者** | ${{ steps.project.outputs.owner }} |" >> $GITHUB_STEP_SUMMARY
+          echo "|  🏷️ **版本** | \`${{ steps.project.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "|  📝 **提交SHA** | \`${{ steps.project.outputs.short_sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| 📅 **构建时间** | ${{ steps.project.outputs.build_date }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| ⏱️ **构建耗时** | ${{ steps.build_end.outputs.duration_readable }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🚀 **触发方式** | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🔧 **Go版本** | $(go version | cut -d' ' -f3) |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🗜️ **UPX版本** | $(upx --version | head -1 | cut -d' ' -f2) |" >> $GITHUB_STEP_SUMMARY
+          echo "| ️ **构建耗时** | ${{ steps.build_end.outputs.duration_readable }} |" >> $GITHUB_STEP_SUMMARY
+          echo "|  🚀 **触发方式** | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "|  🔧 **Go版本** | $(go version | cut -d' ' -f3) |" >> $GITHUB_STEP_SUMMARY
+          echo "|  🗜️ **UPX版本** | $(upx --version | head -1 | cut -d' ' -f2) |" >> $GITHUB_STEP_SUMMARY
           echo "| 📦 **发布类型** | $(if [[ "${{ inputs.draft }}" == "true" ]]; then echo "草稿"; elif [[ "${{ inputs.prerelease }}" == "true" ]]; then echo "预发布"; else echo "正式发布"; fi) |" >> $GITHUB_STEP_SUMMARY
+          echo "|  🔖 **快照模式** | $(if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then echo "是"; else echo "否"; fi) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # 构建环境信息
-          echo "## 🖥️ 构建环境" >> $GITHUB_STEP_SUMMARY
+          echo "## ️ 构建环境" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| 环境变量 | 值 |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-----|" >> $GITHUB_STEP_SUMMARY
@@ -200,25 +214,25 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # 构建时间统计
-          echo "## ⏰ 构建时间统计" >> $GITHUB_STEP_SUMMARY
+          echo "##  ⏰ 构建时间统计" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| 阶段 | 时间 |" >> $GITHUB_STEP_SUMMARY
           echo "|------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| 🚀 **开始时间** | ${{ steps.build_start.outputs.start_readable }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🏁 **结束时间** | ${{ steps.build_end.outputs.end_readable }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| ⏱️ **总耗时** | ${{ steps.build_end.outputs.duration_readable }} |" >> $GITHUB_STEP_SUMMARY
+          echo "|  **开始时间** | ${{ steps.build_start.outputs.start_readable }} |" >> $GITHUB_STEP_SUMMARY
+          echo "|  🏁 **结束时间** | ${{ steps.build_end.outputs.end_readable }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ️ **总耗时** | ${{ steps.build_end.outputs.duration_readable }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # 构建结果
-          echo "## 🚀 构建结果" >> $GITHUB_STEP_SUMMARY
+          echo "##  🚀 构建结果" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| 构建阶段 | 状态 |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
           
           if [[ "${{ steps.build_step.outcome }}" == "success" ]]; then
-            echo "| 🏗️ **构建发布** | ✅ 成功 |" >> $GITHUB_STEP_SUMMARY
+            echo "|  🏗️ **构建发布** | ✅ 成功 |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| 🏗️ **构建发布** | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
+            echo "| ️ **构建发布** |  ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           
@@ -232,19 +246,19 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| 文件类型 | 数量 |" >> $GITHUB_STEP_SUMMARY
             echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
-            echo "| 📁 **总文件数** | ${{ steps.build_stats.outputs.total_files }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| 🔧 **可执行文件** | ${{ steps.build_stats.outputs.executable_files }} |" >> $GITHUB_STEP_SUMMARY
+            echo "|  📁 **总文件数** | ${{ steps.build_stats.outputs.total_files }} |" >> $GITHUB_STEP_SUMMARY
+            echo "|  🔧 **可执行文件** | ${{ steps.build_stats.outputs.executable_files }} |" >> $GITHUB_STEP_SUMMARY
             echo "| 📄 **配置文件** | ${{ steps.build_stats.outputs.config_files }} |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           
             # 平台分布统计
-            echo "### 🌍 平台分布统计" >> $GITHUB_STEP_SUMMARY
+            echo "###  🌍 平台分布统计" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| 平台 | 数量 |" >> $GITHUB_STEP_SUMMARY
             echo "|------|------|" >> $GITHUB_STEP_SUMMARY
-            echo "| 🐧 **Linux** | ${{ steps.build_stats.outputs.linux_count }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| 🍎 **macOS** | ${{ steps.build_stats.outputs.darwin_count }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| 🪟 **Windows** | ${{ steps.build_stats.outputs.windows_count }} |" >> $GITHUB_STEP_SUMMARY
+            echo "|  🐧 **Linux** | ${{ steps.build_stats.outputs.linux_count }} |" >> $GITHUB_STEP_SUMMARY
+            echo "|  🍎 **macOS** | ${{ steps.build_stats.outputs.darwin_count }} |" >> $GITHUB_STEP_SUMMARY
+            echo "|  🪟 **Windows** | ${{ steps.build_stats.outputs.windows_count }} |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           
             # 总产物大小
@@ -262,7 +276,13 @@ jobs:
           if [[ "${{ steps.build_step.outcome }}" == "success" ]]; then
             echo "🎉 **构建状态**: ✅ 成功" >> $GITHUB_STEP_SUMMARY
             echo "🎉 **发布状态**: ✅ 成功" >> $GITHUB_STEP_SUMMARY
-            echo "🔗 **发布链接**: https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/releases/tag/${{ steps.project.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            
+            # 根据触发方式显示不同的链接
+            if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+              echo "🔗 **快照发布**: https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/actions/runs/${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "🔗 **发布链接**: https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/releases/tag/${{ steps.project.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            fi
           else
             echo "🎉 **构建状态**: ❌ 失败" >> $GITHUB_STEP_SUMMARY
             echo "🎉 **发布状态**: ❌ 失败" >> $GITHUB_STEP_SUMMARY
@@ -274,14 +294,21 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # 快速链接
-          echo "## 🔗 快速链接" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- 🎯 [查看发布页面](https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/releases/tag/${{ steps.project.outputs.version }})" >> $GITHUB_STEP_SUMMARY
-          echo "- 📋 [查看产物列表](https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
-          echo "- 📥 [下载产物](https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔍 [查看提交](https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/commit/${{ steps.project.outputs.full_sha }})" >> $GITHUB_STEP_SUMMARY
+          echo "##  🔗 快速链接" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "-  📋 [查看产物列表](https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+            echo "- 📥 [下载产物](https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+            echo "-  🔍 [查看提交](https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/commit/${{ steps.project.outputs.full_sha }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "-  [查看发布页面](https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/releases/tag/${{ steps.project.outputs.version }})" >> $GITHUB_STEP_SUMMARY
+            echo "-  📋 [查看产物列表](https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+            echo "- 📥 [下载产物](https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔍 [查看提交](https://github.com/${{ steps.project.outputs.owner }}/${{ steps.project.outputs.repo }}/commit/${{ steps.project.outputs.full_sha }})" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "*报告生成时间: $(date -u +"%Y-%m-%d %H:%M:%S UTC")*" >> $GITHUB_STEP_SUMMARY
 
