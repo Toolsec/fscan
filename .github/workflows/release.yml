@@ -1,6 +1,7 @@
 name: 发布构建
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
